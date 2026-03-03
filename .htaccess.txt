@@ -1,0 +1,5 @@
+; Coloca este archivo .htaccess en la carpeta del proyecto
+; para permitir imágenes más grandes (pósters en BLOB)
+php_value upload_max_filesize 20M
+php_value post_max_size 25M
+php_value max_execution_time 60
