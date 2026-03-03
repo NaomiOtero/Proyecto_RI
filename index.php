@@ -68,14 +68,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'regis
         if ($res && $fila = $res->fetch_assoc()) {
             $genero = $conexion->real_escape_string($fila['genero']);
             $recRes = $conexion->query(
-                "SELECT id_pelicula, nombre FROM peliculas
+                "SELECT id_pelicula, nombre, youtube_url FROM peliculas
                  WHERE genero = '$genero' AND id_pelicula != $id_pelicula LIMIT 4"
             );
             while ($r = $recRes->fetch_assoc()) {
                 $recomendaciones[] = [
                     'id'     => $r['id_pelicula'],
                     'nombre' => $r['nombre'],
-                    'img'    => "imagen.php?id=" . $r['id_pelicula']
+                    'img'        => "imagen.php?id=" . $r['id_pelicula'],
+                    'youtube_url'=> $r['youtube_url'] ?? ''
                 ];
             }
         }
@@ -97,7 +98,7 @@ $sugerencia = $tipoError = $imagenSugerida = $sugerenciaId = "";
 
 if ($resultado->num_rows == 0 && $busqueda != "") {
     $busquedaNorm    = normalizar($busqueda);
-    $resPeliculas    = $conexion->query("SELECT id_pelicula, nombre FROM peliculas");
+    $resPeliculas    = $conexion->query("SELECT id_pelicula, nombre, youtube_url FROM peliculas");
     $distanciaMinima = 999;
 
     while ($fila = $resPeliculas->fetch_assoc()) {
@@ -340,12 +341,11 @@ function registrarTiempo() {
                 const grid = document.getElementById('recGrid');
                 grid.innerHTML = '';
                 data.recomendaciones.forEach(p => {
-                    grid.innerHTML += `
-                        <div class="bg-gray-800 rounded-lg overflow-hidden text-white text-center text-xs cursor-pointer hover:ring-2 hover:ring-red-500"
-                             onclick="verPelicula(${p.id}, '')">
-                            <img src="${p.img}" class="w-full h-28 object-cover">
-                            <p class="p-1">${p.nombre}</p>
-                        </div>`;
+                    const div = document.createElement('div');
+                    div.className = 'bg-gray-800 rounded-lg overflow-hidden text-white text-center text-xs cursor-pointer hover:ring-2 hover:ring-red-500';
+                    div.innerHTML = `<img src="${p.img}" class="w-full h-28 object-cover"><p class="p-1">${p.nombre}</p>`;
+                    div.addEventListener('click', () => verPelicula(p.id, p.youtube_url || ''));
+                    grid.appendChild(div);
                 });
                 document.getElementById('recomendaciones').classList.remove('hidden');
             }
