@@ -1,5 +1,6 @@
 <?php
 
+
 // ── NORMALIZACIÓN ─────────────────────────────────────────────────────────────
 
 function normalizar(string $texto): string {
@@ -15,9 +16,12 @@ function normalizar(string $texto): string {
 
 // ── SUGERENCIAS (LEVENSHTEIN) ─────────────────────────────────────────────────
 
-function obtenerSugerencia(mysqli $conexion, string $busqueda): array {
+function obtenerSugerencia(mysqli $conexion, string $busqueda, int $idPlanUsuario = 2): array {
     $busquedaNorm    = normalizar($busqueda);
-    $resPeliculas    = $conexion->query("SELECT id_pelicula, nombre FROM peliculas");
+    // Solo sugiere películas visibles para el plan del usuario
+    $resPeliculas    = $conexion->query(
+        "SELECT id_pelicula, nombre FROM peliculas WHERE id_plan <= $idPlanUsuario"
+    );
     $distanciaMinima = 999;
     $sugerencia      = '';
     $sugerenciaId    = '';
@@ -50,9 +54,6 @@ function obtenerSugerencia(mysqli $conexion, string $busqueda): array {
 
 // ── MODELO BOOLEANO ───────────────────────────────────────────────────────────
 
-/**
- * Divide la consulta en tokens respetando AND / OR / NOT y paréntesis.
- */
 function tokenizarBooleano(string $texto): array {
     $texto  = preg_replace('/\s+(AND|OR|NOT)\s+/i', ' $1 ', ' ' . trim($texto) . ' ');
     $texto  = str_replace(['(', ')'], [' ( ', ' ) '], $texto);
@@ -60,7 +61,6 @@ function tokenizarBooleano(string $texto): array {
     return array_values(array_filter($partes, fn($p) => $p !== ''));
 }
 
-// Parsers recursivos: OR < AND < NOT < primario
 function construirHaving(array &$tokens, mysqli $conexion): string {
     return parseOrHaving($tokens, $conexion);
 }
@@ -108,12 +108,10 @@ function parsePrimarioHaving(array &$tokens, mysqli $conexion): string {
     $termino = $conexion->real_escape_string($raw);
     $norm    = $conexion->real_escape_string(normalizar($raw));
 
-    // Término numérico de 4 dígitos → buscar por año
     if (preg_match('/^\d{4}$/', $raw)) {
         return "p.anio = $termino";
     }
 
-    // Buscar en nombre, autor y géneros concatenados
     return "(
         p.nombre LIKE '%$termino%' OR p.autor LIKE '%$termino%'
         OR p.nombre LIKE '%$norm%'  OR p.autor LIKE '%$norm%'
@@ -122,10 +120,6 @@ function parsePrimarioHaving(array &$tokens, mysqli $conexion): string {
     )";
 }
 
-/**
- * Convierte una consulta booleana en cláusula HAVING.
- * Devuelve string vacío si no hay búsqueda, false si la expresión es inválida.
- */
 function parsearConsultaBooleana(string $busqueda, mysqli $conexion): string|false {
     $busqueda = trim($busqueda);
     if ($busqueda === '') return '';
@@ -136,16 +130,20 @@ function parsearConsultaBooleana(string $busqueda, mysqli $conexion): string|fal
     return ($having !== '') ? $having : false;
 }
 
-// ── BÚSQUEDA PRINCIPAL ────────────────────────────────────────────────────────
+// ── BÚSQUEDA PRINCIPAL (con filtro de plan) ───────────────────────────────────
 
-function buscarPeliculas(mysqli $conexion, string $busqueda): array {
+function buscarPeliculas(mysqli $conexion, string $busqueda, int $idPlanUsuario = 2): array {
     $errorBooleano = '';
 
-    $sqlBase = "SELECT p.id_pelicula, p.nombre, p.autor, p.anio, p.youtube_url,
+    // Filtrar por plan: usuario solo ve películas de su plan o inferior
+    $filtroPlan = "p.id_plan <= $idPlanUsuario";
+
+    $sqlBase = "SELECT p.id_pelicula, p.nombre, p.autor, p.anio, p.youtube_url, p.id_plan,
                        GROUP_CONCAT(g.nombre ORDER BY g.nombre SEPARATOR ', ') AS genero
                 FROM peliculas p
                 LEFT JOIN pelicula_generos pg ON p.id_pelicula = pg.id_pelicula
-                LEFT JOIN generos g           ON pg.id_genero  = g.id_genero";
+                LEFT JOIN generos g           ON pg.id_genero  = g.id_genero
+                WHERE $filtroPlan";
 
     if ($busqueda !== '') {
         $having = parsearConsultaBooleana($busqueda, $conexion);
@@ -167,16 +165,13 @@ function buscarPeliculas(mysqli $conexion, string $busqueda): array {
 
 // ── AGREGAR PELÍCULA ──────────────────────────────────────────────────────────
 
-/**
- * Inserta una nueva película con imagen BLOB y géneros.
- * Devuelve el id insertado.
- */
 function agregarPelicula(mysqli $conexion, array $post, array $files): int {
-    $nombre  = $post['nombre']      ?? '';
-    $autor   = $post['autor']       ?? '';
-    $anio    = (int)($post['anio']  ?? 0);
-    $youtube = $post['youtube_url'] ?? '';
-    $generos = $post['generos']     ?? [];
+    $nombre   = $post['nombre']              ?? '';
+    $autor    = $post['autor']               ?? '';
+    $anio     = (int)($post['anio']          ?? 0);
+    $youtube  = $post['youtube_url']         ?? '';
+    $generos  = $post['generos']             ?? [];
+    $id_plan  = (int)($post['id_plan_peli']  ?? 1);
 
     $imagenBlob = null;
     $imagenTipo = 'image/jpeg';
@@ -187,11 +182,11 @@ function agregarPelicula(mysqli $conexion, array $post, array $files): int {
     }
 
     $stmt = $conexion->prepare(
-        "INSERT INTO peliculas (nombre, autor, anio, youtube_url, imagen, imagen_tipo)
-         VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO peliculas (nombre, autor, anio, youtube_url, imagen, imagen_tipo, id_plan)
+         VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
     $null = null;
-    $stmt->bind_param("ssisbs", $nombre, $autor, $anio, $youtube, $null, $imagenTipo);
+    $stmt->bind_param("ssisbsi", $nombre, $autor, $anio, $youtube, $null, $imagenTipo, $id_plan);
 
     if ($imagenBlob !== null) {
         $chunkSize = 65536;
@@ -224,20 +219,8 @@ function agregarPelicula(mysqli $conexion, array $post, array $files): int {
 
 // ── REGISTRAR TIEMPO / RECOMENDACIONES ───────────────────────────────────────
 
-/**
- * Guarda el tiempo de visualización.
- * Devuelve ['gusto' => int, 'recomendaciones' => array]
- */
-function registrarTiempo(mysqli $conexion, int $idPelicula, int $segundos): array {
+function registrarTiempo(mysqli $conexion, int $idPelicula, int $segundos, int $idPlanUsuario = 2): array {
     $gusto = $segundos >= 15 ? 1 : 0;
-
-    $conexion->query("CREATE TABLE IF NOT EXISTS visualizaciones (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        id_pelicula INT NOT NULL,
-        segundos INT NOT NULL,
-        gusto TINYINT(1) NOT NULL,
-        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
 
     $stmt = $conexion->prepare(
         "INSERT INTO visualizaciones (id_pelicula, segundos, gusto) VALUES (?, ?, ?)"
@@ -259,12 +242,14 @@ function registrarTiempo(mysqli $conexion, int $idPelicula, int $segundos): arra
 
         if (!empty($generosIds)) {
             $idsStr = implode(',', $generosIds);
+            // Recomendar solo películas accesibles según el plan del usuario
             $recRes = $conexion->query(
                 "SELECT DISTINCT p.id_pelicula, p.nombre, p.youtube_url
                  FROM peliculas p
                  JOIN pelicula_generos pg ON p.id_pelicula = pg.id_pelicula
                  WHERE pg.id_genero IN ($idsStr)
                    AND p.id_pelicula != $idPelicula
+                   AND p.id_plan <= $idPlanUsuario
                  LIMIT 4"
             );
             while ($r = $recRes->fetch_assoc()) {
