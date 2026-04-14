@@ -138,7 +138,7 @@ function buscarPeliculas(mysqli $conexion, string $busqueda, int $idPlanUsuario 
     // Filtrar por plan: usuario solo ve películas de su plan o inferior
     $filtroPlan = "p.id_plan <= $idPlanUsuario";
 
-    $sqlBase = "SELECT p.id_pelicula, p.nombre, p.autor, p.anio, p.youtube_url, p.id_plan,
+    $sqlBase = "SELECT p.id_pelicula, p.nombre, p.autor, p.anio, p.youtube_url, p.sinopsis, p.id_plan,
                        GROUP_CONCAT(g.nombre ORDER BY g.nombre SEPARATOR ', ') AS genero
                 FROM peliculas p
                 LEFT JOIN pelicula_generos pg ON p.id_pelicula = pg.id_pelicula
@@ -170,6 +170,7 @@ function agregarPelicula(mysqli $conexion, array $post, array $files): int {
     $autor    = $post['autor']               ?? '';
     $anio     = (int)($post['anio']          ?? 0);
     $youtube  = $post['youtube_url']         ?? '';
+    $sinopsis = $post['sinopsis']            ?? '';
     $generos  = $post['generos']             ?? [];
     $id_plan  = (int)($post['id_plan_peli']  ?? 1);
 
@@ -182,18 +183,18 @@ function agregarPelicula(mysqli $conexion, array $post, array $files): int {
     }
 
     $stmt = $conexion->prepare(
-        "INSERT INTO peliculas (nombre, autor, anio, youtube_url, imagen, imagen_tipo, id_plan)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO peliculas (nombre, autor, anio, youtube_url, sinopsis, imagen, imagen_tipo, id_plan)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     );
     $null = null;
-    $stmt->bind_param("ssisbsi", $nombre, $autor, $anio, $youtube, $null, $imagenTipo, $id_plan);
+    $stmt->bind_param("ssissssi", $nombre, $autor, $anio, $youtube, $sinopsis, $null, $imagenTipo, $id_plan);
 
     if ($imagenBlob !== null) {
         $chunkSize = 65536;
         $offset    = 0;
         $len       = strlen($imagenBlob);
         while ($offset < $len) {
-            $stmt->send_long_data(4, substr($imagenBlob, $offset, $chunkSize));
+            $stmt->send_long_data(5, substr($imagenBlob, $offset, $chunkSize));
             $offset += $chunkSize;
         }
     }

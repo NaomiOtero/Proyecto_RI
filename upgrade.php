@@ -10,8 +10,8 @@ if ($_SESSION['id_plan'] == 2)       { header("Location: index.php");  exit; }
 require_once 'db.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $id = (int)$_SESSION['id_usuario'];
-    $conexion->query("UPDATE usuarios SET id_plan = 2 WHERE id_usuario = $id");
+    $id_cuenta = (int)$_SESSION['id_cuenta'];
+    $conexion->query("UPDATE cuentas SET id_plan = 2, max_usuarios = 5 WHERE id_cuenta = $id_cuenta");
     $_SESSION['id_plan']     = 2;
     $_SESSION['nombre_plan'] = 'Premium';
     $conexion->close();

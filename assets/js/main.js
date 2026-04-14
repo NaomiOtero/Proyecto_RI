@@ -105,3 +105,33 @@ function renderizarRecomendaciones(lista) {
 
     document.getElementById('recomendaciones').classList.remove('hidden');
 }
+
+// ── MODAL SINOPSIS CON VIDEO DE FONDO ────────────────────────────────────────
+
+function abrirModalSinopsis(div) {
+    const id = div.dataset.id;
+    const nombre = div.dataset.nombre;
+    const sinopsis = div.dataset.sinopsis;
+    const youtubeUrl = div.dataset.youtube;
+
+    // Convertir URL a embed
+    const matchV  = youtubeUrl.match(/[?&]v=([^&]+)/);
+    const matchBe = youtubeUrl.match(/youtu\.be\/([^?]+)/);
+    const videoId = matchV ? matchV[1] : (matchBe ? matchBe[1] : null);
+    const embedUrl = videoId
+        ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&modestbranding=1`
+        : youtubeUrl;
+
+    // Setear contenido
+    document.getElementById('sinopsisTitulo').textContent = nombre;
+    document.getElementById('sinopsisTexto').textContent = sinopsis || 'Sin sinopsis disponible.';
+    document.getElementById('sinopsisFrame').src = embedUrl;
+
+    // Mostrar modal
+    document.getElementById('modalSinopsis').classList.remove('hidden');
+}
+
+function cerrarModalSinopsis() {
+    document.getElementById('sinopsisFrame').src = '';
+    document.getElementById('modalSinopsis').classList.add('hidden');
+}

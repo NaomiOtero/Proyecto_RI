@@ -18,11 +18,12 @@ $tabActiva = 'login';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'registrar') {
     $tabActiva = 'registro';
-    $nombre    = trim($_POST['nombre']   ?? '');
-    $email     = trim($_POST['email']    ?? '');
-    $pass      = $_POST['password']      ?? '';
-    $pass2     = $_POST['password2']     ?? '';
-    $id_plan   = (int)($_POST['id_plan'] ?? 1);
+    $nombre      = trim($_POST['nombre']      ?? '');
+    $email       = trim($_POST['email']       ?? '');
+    $pass        = $_POST['password']         ?? '';
+    $pass2       = $_POST['password2']        ?? '';
+    $id_plan     = (int)($_POST['id_plan']    ?? 1);
+    $cuenta_email = trim($_POST['cuenta_email'] ?? '');
 
     if (!$nombre || !$email || !$pass) {
         $error = "Todos los campos son obligatorios.";
@@ -42,17 +43,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'regis
             $error = "Ya existe una cuenta con ese correo.";
         } else {
             $hash = password_hash($pass, PASSWORD_BCRYPT);
-            $stmt = $conexion->prepare(
-                "INSERT INTO usuarios (nombre, email, password, id_plan) VALUES (?, ?, ?, ?)"
-            );
-            $stmt->bind_param("sssi", $nombre, $email, $hash, $id_plan);
-            if ($stmt->execute()) {
-                $success   = "¡Cuenta creada! Ya puedes iniciar sesión.";
-                $tabActiva = 'login';
+            $id_cuenta = null;
+
+            if ($cuenta_email !== '') {
+                // Buscar cuenta existente
+                $stmt_cuenta = $conexion->prepare("SELECT c.id_cuenta, c.max_usuarios, COUNT(u.id_usuario) as num_usuarios FROM cuentas c LEFT JOIN usuarios u ON c.id_cuenta = u.id_cuenta WHERE c.email_cuenta = ? GROUP BY c.id_cuenta");
+                $stmt_cuenta->bind_param("s", $cuenta_email);
+                $stmt_cuenta->execute();
+                $stmt_cuenta->bind_result($id_cuenta_temp, $max_usuarios, $num_usuarios);
+                if ($stmt_cuenta->fetch()) {
+                    if ($num_usuarios >= $max_usuarios) {
+                        $error = "La cuenta ya tiene el máximo de usuarios permitidos.";
+                    } else {
+                        $id_cuenta = $id_cuenta_temp;
+                    }
+                } else {
+                    $error = "Cuenta no encontrada.";
+                }
+                $stmt_cuenta->close();
             } else {
-                $error = "Error al registrar. Intenta de nuevo.";
+                // Crear nueva cuenta
+                $max_usuarios = $id_plan == 1 ? 2 : 5;
+                $stmt_cuenta = $conexion->prepare("INSERT INTO cuentas (id_plan, max_usuarios, email_cuenta) VALUES (?, ?, ?)");
+                $stmt_cuenta->bind_param("iis", $id_plan, $max_usuarios, $email);
+                if ($stmt_cuenta->execute()) {
+                    $id_cuenta = $conexion->insert_id;
+                } else {
+                    $error = "Error al crear cuenta.";
+                }
+                $stmt_cuenta->close();
             }
-            $stmt->close();
+
+            if (!$error && $id_cuenta) {
+                $stmt = $conexion->prepare("INSERT INTO usuarios (nombre, email, password, id_cuenta) VALUES (?, ?, ?, ?)");
+                $stmt->bind_param("sssi", $nombre, $email, $hash, $id_cuenta);
+                if ($stmt->execute()) {
+                    $success = "¡Cuenta creada! Ya puedes iniciar sesión.";
+                    $tabActiva = 'login';
+                } else {
+                    $error = "Error al registrar. Intenta de nuevo.";
+                }
+                $stmt->close();
+            }
         }
         $chk->close();
     }
@@ -67,9 +99,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'login
         $error = "Ingresa tu correo y contraseña.";
     } else {
         $stmt = $conexion->prepare(
-            "SELECT u.id_usuario, u.nombre, u.password, u.id_plan, pl.nombre AS nombre_plan
+            "SELECT u.id_usuario, u.nombre, u.password, u.id_cuenta, c.id_plan, pl.nombre AS nombre_plan
              FROM usuarios u
-             JOIN planes pl ON u.id_plan = pl.id_plan
+             JOIN cuentas c ON u.id_cuenta = c.id_cuenta
+             JOIN planes pl ON c.id_plan = pl.id_plan
              WHERE u.email = ?"
         );
         $stmt->bind_param("s", $email);
@@ -79,12 +112,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'login
         if ($stmt->num_rows === 0) {
             $error = "Correo o contraseña incorrectos.";
         } else {
-            $stmt->bind_result($id_usuario, $nombre, $hash, $id_plan, $nombre_plan);
+            $stmt->bind_result($id_usuario, $nombre, $hash, $id_cuenta, $id_plan, $nombre_plan);
             $stmt->fetch();
 
             if (password_verify($pass, $hash)) {
                 $_SESSION['id_usuario']   = $id_usuario;
                 $_SESSION['nombre']       = $nombre;
+                $_SESSION['id_cuenta']    = $id_cuenta;
                 $_SESSION['id_plan']      = $id_plan;
                 $_SESSION['nombre_plan']  = $nombre_plan;
                 header("Location: index.php");
@@ -180,6 +214,11 @@ while ($r = $res->fetch_assoc()) $planes[] = $r;
             <div>
                 <label class="text-gray-400 text-xs mb-1 block">Correo electrónico</label>
                 <input type="email" name="email" required placeholder="tu@correo.com"
+                    class="w-full px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500">
+            </div>
+            <div>
+                <label class="text-gray-400 text-xs mb-1 block">Email de cuenta existente (opcional)</label>
+                <input type="email" name="cuenta_email" placeholder="Si te quieres unir a una cuenta existente"
                     class="w-full px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500">
             </div>
             <div>

@@ -24,10 +24,39 @@ $nombrePlan    = $_SESSION['nombre_plan'] ?? ($idPlanUsuario == 2 ? 'Premium' : 
 require_once 'funciones.php';
 require_once 'db.php';
 
+// ── VERIFICAR MÚLTIPLES USUARIOS EN CUENTA ───────────────────────────────────
+$idCuenta = (int)$_SESSION['id_cuenta'];
+$usuariosCuenta = [];
+$result = $conexion->query("SELECT id_usuario, nombre, email FROM usuarios WHERE id_cuenta = $idCuenta");
+while ($row = $result->fetch_assoc()) {
+    $usuariosCuenta[] = $row;
+}
+$mostrarMenuPerfiles = count($usuariosCuenta) > 1;
+
 // ── CONTROLADOR POST ──────────────────────────────────────────────────────────
 $accion = $_POST['accion'] ?? '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    if ($accion === 'cambiar_perfil') {
+        $idUsuarioSeleccionado = (int)($_POST['id_usuario'] ?? 0);
+        $password = $_POST['password'] ?? '';
+
+        // Verificar que el usuario pertenece a la cuenta
+        $stmt = $conexion->prepare("SELECT password, nombre FROM usuarios WHERE id_usuario = ? AND id_cuenta = ?");
+        $stmt->bind_param("ii", $idUsuarioSeleccionado, $idCuenta);
+        $stmt->execute();
+        $stmt->bind_result($hash, $nombre);
+        if ($stmt->fetch() && password_verify($password, $hash)) {
+            $_SESSION['id_usuario'] = $idUsuarioSeleccionado;
+            $_SESSION['nombre'] = $nombre;
+            header("Location: index.php");
+            exit;
+        } else {
+            $errorPerfil = "Contraseña incorrecta.";
+        }
+        $stmt->close();
+    }
 
     if ($accion === 'agregar') {
         agregarPelicula($conexion, $_POST, $_FILES);
@@ -119,6 +148,12 @@ while ($g = $resGeneros->fetch_assoc()) $resGenerosArr[] = $g;
             <span class="text-xs font-semibold <?= $idPlanUsuario == 2 ? 'text-yellow-300' : 'text-gray-200' ?>">
                 <?= $idPlanUsuario == 2 ? '⭐ Premium' : '📦 Básico' ?>
             </span>
+            <?php if ($mostrarMenuPerfiles): ?>
+            <button onclick="document.getElementById('modalPerfiles').classList.remove('hidden')"
+                class="text-xs bg-black bg-opacity-40 hover:bg-opacity-70 text-white px-2 py-1 rounded-lg">
+                Cambiar perfil
+            </button>
+            <?php endif; ?>
             <a href="?logout=1"
                onclick="return confirm('¿Cerrar sesión?')"
                class="flex items-center gap-1 text-xs bg-black bg-opacity-40 hover:bg-opacity-70
@@ -267,7 +302,11 @@ while ($g = $resGeneros->fetch_assoc()) $resGenerosArr[] = $g;
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             <?php if ($resultado->num_rows > 0): ?>
                 <?php while ($fila = $resultado->fetch_assoc()): ?>
-                <div class="bg-gray-800 text-white rounded-xl shadow-lg overflow-hidden transition transform hover:-translate-y-2 hover:shadow-2xl">
+                <div class="bg-gray-800 text-white rounded-xl shadow-lg overflow-hidden transition transform hover:-translate-y-2 hover:shadow-2xl"
+                     data-id="<?= (int)$fila['id_pelicula'] ?>"
+                     data-nombre="<?= htmlspecialchars($fila['nombre'], ENT_QUOTES) ?>"
+                     data-sinopsis="<?= htmlspecialchars($fila['sinopsis'] ?? '', ENT_QUOTES) ?>"
+                     data-youtube="<?= htmlspecialchars($fila['youtube_url'] ?? '', ENT_QUOTES) ?>">
                     <?php if ((int)($fila['id_plan'] ?? 1) === 2): ?>
                     <div class="bg-yellow-500 text-black text-xs font-bold text-center py-1 tracking-wide">
                         ⭐ PREMIUM
@@ -275,7 +314,8 @@ while ($g = $resGeneros->fetch_assoc()) $resGenerosArr[] = $g;
                     <?php endif; ?>
                     <img src="imagen.php?id=<?= (int)$fila['id_pelicula'] ?>"
                          alt="<?= htmlspecialchars($fila['nombre']) ?>"
-                         class="h-72 w-full object-cover">
+                         class="h-72 w-full object-cover cursor-pointer"
+                         onclick="abrirModalSinopsis(this.parentElement)">
                     <div class="p-4 flex flex-col">
                         <h5 class="text-lg font-semibold text-center mb-1">
                             <?= htmlspecialchars($fila['nombre']) ?>
@@ -322,6 +362,8 @@ while ($g = $resGeneros->fetch_assoc()) $resGenerosArr[] = $g;
                 class="px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500">
             <input type="number" name="anio" placeholder="Año" min="1900" max="2099" required
                 class="px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500">
+            <textarea name="sinopsis" placeholder="Sinopsis de la película" rows="3"
+                class="px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500 resize-none"></textarea>
 
             <!-- CHECKBOXES DE GÉNEROS -->
             <div class="bg-gray-800 border border-gray-600 rounded-lg p-3">
@@ -396,7 +438,70 @@ while ($g = $resGeneros->fetch_assoc()) $resGenerosArr[] = $g;
     </div>
 </div>
 
+<!-- ── MODAL: SINOPSIS CON VIDEO DE FONDO ───────────────────────────────────── -->
+<div id="modalSinopsis" class="hidden fixed inset-0 bg-black z-50">
+    <div class="relative w-full h-full">
+        <!-- Video de fondo -->
+        <iframe id="sinopsisFrame" class="w-full h-full"
+            frameborder="0" allowfullscreen allow="autoplay; encrypted-media; mute"></iframe>
+        <!-- Overlay con sinopsis -->
+        <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div class="bg-gray-900 bg-opacity-90 border border-gray-700 rounded-2xl p-6 w-full max-w-2xl mx-4 shadow-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 id="sinopsisTitulo" class="text-white text-2xl font-bold"></h2>
+                    <button onclick="cerrarModalSinopsis()" class="text-gray-400 hover:text-white text-2xl">✕</button>
+                </div>
+                <p id="sinopsisTexto" class="text-gray-300 text-lg leading-relaxed"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── MODAL: CAMBIAR PERFIL ────────────────────────────────────────────────── -->
+<div id="modalPerfiles" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+        <h2 class="text-white text-2xl font-bold mb-4 text-center">👥 Seleccionar Perfil</h2>
+        <?php if (isset($errorPerfil)): ?>
+        <p class="text-red-400 text-sm mb-4"><?= htmlspecialchars($errorPerfil) ?></p>
+        <?php endif; ?>
+        <form method="POST" class="flex flex-col gap-4">
+            <input type="hidden" name="accion" value="cambiar_perfil">
+            <div>
+                <label class="text-gray-400 text-sm mb-2 block">Elige un perfil:</label>
+                <select name="id_usuario" required class="w-full px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500">
+                    <option value="">-- Seleccionar --</option>
+                    <?php foreach ($usuariosCuenta as $u): ?>
+                    <option value="<?= $u['id_usuario'] ?>" <?= $u['id_usuario'] == $_SESSION['id_usuario'] ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($u['nombre']) ?> (<?= htmlspecialchars($u['email']) ?>)
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label class="text-gray-400 text-sm mb-1 block">Contraseña del perfil</label>
+                <input type="password" name="password" required placeholder="••••••••"
+                    class="w-full px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500">
+            </div>
+            <div class="flex gap-3 mt-2">
+                <button type="submit" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-semibold">
+                    Cambiar
+                </button>
+                <button type="button" onclick="document.getElementById('modalPerfiles').classList.add('hidden')"
+                    class="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg">
+                    Cancelar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script src="assets/js/main.js"></script>
+<?php if ($mostrarMenuPerfiles && !isset($_SESSION['perfil_seleccionado'])): ?>
+<script>
+document.getElementById('modalPerfiles').classList.remove('hidden');
+<?php $_SESSION['perfil_seleccionado'] = true; ?>
+</script>
+<?php endif; ?>
 <script>
 // ── LÓGICA DEL BUSCADOR BOOLEANO ─────────────────────────────────────────────
 
