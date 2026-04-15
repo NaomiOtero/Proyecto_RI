@@ -399,7 +399,7 @@ while ($c = $contRes->fetch_assoc()) {
                 <div class="space-y-3">
                     <?php foreach ($continuarViendo as $peli): ?>
                     <div class="bg-gray-700 rounded-lg p-2 cursor-pointer hover:bg-gray-600"
-                         onclick="abrirModalSinopsis(<?= $peli['id_pelicula'] ?>, '<?= htmlspecialchars($peli['nombre'], ENT_QUOTES) ?>', '', '<?= htmlspecialchars($peli['youtube_url'], ENT_QUOTES) ?>')">
+                         onclick="verPelicula(<?= $peli['id_pelicula'] ?>, '<?= htmlspecialchars($peli['youtube_url'], ENT_QUOTES) ?>', <?= (int)$peli['total_segundos'] ?>)">
                         <div class="flex items-center gap-3">
                             <img src="imagen.php?id=<?= $peli['id_pelicula'] ?>" alt="<?= htmlspecialchars($peli['nombre']) ?>"
                                  class="w-16 h-10 object-cover rounded">

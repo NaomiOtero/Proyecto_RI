@@ -6,12 +6,12 @@ let peliculaActualId = null;
 // ── ENTRADA DESDE LOS BOTONES DEL GRID ───────────────────────────────────────
 
 function verPeliculaBtn(btn) {
-    verPelicula(btn.dataset.id, btn.dataset.url);
+    verPelicula(btn.dataset.id, btn.dataset.url, 0);
 }
 
 // ── ABRIR MODAL DE VIDEO ──────────────────────────────────────────────────────
 
-function verPelicula(id, youtubeUrl) {
+function verPelicula(id, youtubeUrl, inicio = 0) {
     peliculaActualId = id;
     segundosVisto    = 0;
 
@@ -19,8 +19,9 @@ function verPelicula(id, youtubeUrl) {
     const matchV  = youtubeUrl.match(/[?&]v=([^&]+)/);
     const matchBe = youtubeUrl.match(/youtu\.be\/([^?]+)/);
     const videoId = matchV ? matchV[1] : (matchBe ? matchBe[1] : null);
+    const startQuery = inicio > 0 ? `&start=${inicio}` : '';
     const embedUrl = videoId
-        ? `https://www.youtube.com/embed/${videoId}?autoplay=1`
+        ? `https://www.youtube.com/embed/${videoId}?autoplay=1${startQuery}`
         : youtubeUrl;
 
     // Resetear UI
