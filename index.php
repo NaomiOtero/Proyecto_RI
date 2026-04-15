@@ -145,14 +145,16 @@ $contRes = $conexion->query(
     "SELECT p.id_pelicula, p.nombre, p.duracion, p.youtube_url, SUM(v.segundos) as total_segundos
      FROM peliculas p
      JOIN visualizaciones v ON p.id_pelicula = v.id_pelicula
-     WHERE v.id_usuario = $idUsuario AND p.duracion > 0
+     WHERE v.id_usuario = $idUsuario
      GROUP BY p.id_pelicula, p.nombre, p.duracion, p.youtube_url
-     HAVING total_segundos < p.duracion
+     HAVING total_segundos > 0 AND (p.duracion IS NULL OR total_segundos < p.duracion)
      ORDER BY MAX(v.fecha) DESC
      LIMIT 5"
 );
 while ($c = $contRes->fetch_assoc()) {
-    $progreso = min(100, round(($c['total_segundos'] / $c['duracion']) * 100));
+    $progreso = $c['duracion'] > 0
+        ? min(100, round(($c['total_segundos'] / $c['duracion']) * 100))
+        : null;
     $continuarViendo[] = array_merge($c, ['progreso' => $progreso]);
 }
 ?>
@@ -405,12 +407,18 @@ while ($c = $contRes->fetch_assoc()) {
                                 <p class="text-white text-sm font-semibold line-clamp-1">
                                     <?= htmlspecialchars($peli['nombre']) ?>
                                 </p>
+                                <?php if ($peli['progreso'] !== null): ?>
                                 <div class="w-full bg-gray-600 rounded-full h-1 mt-1">
                                     <div class="bg-red-500 h-1 rounded-full" style="width: <?= $peli['progreso'] ?>%"></div>
                                 </div>
                                 <p class="text-gray-400 text-xs mt-1">
                                     <?= $peli['progreso'] ?>% visto
                                 </p>
+                                <?php else: ?>
+                                <p class="text-gray-400 text-xs mt-1">
+                                    Visto parcialmente
+                                </p>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
