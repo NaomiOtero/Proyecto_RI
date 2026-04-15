@@ -67,7 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($accion === 'registrar_tiempo') {
         $idPelicula = (int)($_POST['id_pelicula'] ?? 0);
         $segundos   = (int)($_POST['segundos']    ?? 0);
-        $data       = registrarTiempo($conexion, $idPelicula, $segundos, $idPlanUsuario);
+        $idUsuario  = (int)$_SESSION['id_usuario'];
+        $data       = registrarTiempo($conexion, $idPelicula, $segundos, $idUsuario, $idPlanUsuario);
         header('Content-Type: application/json');
         echo json_encode($data);
         exit;
@@ -121,6 +122,21 @@ if ($resultado->num_rows === 0 && $busqueda !== '') {
 $resGenerosArr = [];
 $resGeneros = $conexion->query("SELECT id_genero, nombre FROM generos ORDER BY nombre");
 while ($g = $resGeneros->fetch_assoc()) $resGenerosArr[] = $g;
+
+// ── TOP 10 PELÍCULAS ──────────────────────────────────────────────────────────
+$top10 = [];
+$topRes = $conexion->query(
+    "SELECT p.id_pelicula, p.nombre, COUNT(DISTINCT v.id_usuario) as likes
+     FROM peliculas p
+     JOIN visualizaciones v ON p.id_pelicula = v.id_pelicula
+     WHERE v.gusto = 1 AND p.id_plan <= $idPlanUsuario
+     GROUP BY p.id_pelicula, p.nombre
+     ORDER BY likes DESC
+     LIMIT 10"
+);
+while ($t = $topRes->fetch_assoc()) {
+    $top10[] = $t;
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -162,6 +178,12 @@ while ($g = $resGeneros->fetch_assoc()) $resGenerosArr[] = $g;
             </a>
         </div>
     </header>
+
+    <!-- MAIN CONTENT -->
+    <div class="flex-1 flex">
+
+        <!-- LEFT: CATÁLOGO -->
+        <div class="flex-1 pr-6">
 
     <main class="flex-1">
 
@@ -344,6 +366,38 @@ while ($g = $resGeneros->fetch_assoc()) $resGenerosArr[] = $g;
         </div>
 
     </main>
+
+        </div> <!-- END LEFT -->
+
+        <!-- RIGHT: SIDEBAR TOP 10 -->
+        <div class="w-80 bg-gray-800 rounded-xl p-4">
+            <h3 class="text-white text-xl font-bold mb-4 text-center">🏆 Top 10 Películas</h3>
+            <?php if (!empty($top10)): ?>
+            <ol class="space-y-3">
+                <?php foreach ($top10 as $index => $peli): ?>
+                <li class="flex items-center gap-3 bg-gray-700 rounded-lg p-2">
+                    <span class="text-yellow-400 font-bold text-lg w-8 text-center">
+                        <?= $index + 1 ?>
+                    </span>
+                    <img src="imagen.php?id=<?= $peli['id_pelicula'] ?>" alt="<?= htmlspecialchars($peli['nombre']) ?>"
+                         class="w-12 h-16 object-cover rounded">
+                    <div class="flex-1">
+                        <p class="text-white text-sm font-semibold line-clamp-2">
+                            <?= htmlspecialchars($peli['nombre']) ?>
+                        </p>
+                        <p class="text-gray-400 text-xs">
+                            ❤️ <?= $peli['likes'] ?> likes
+                        </p>
+                    </div>
+                </li>
+                <?php endforeach; ?>
+            </ol>
+            <?php else: ?>
+            <p class="text-gray-400 text-center">No hay películas en el top aún.</p>
+            <?php endif; ?>
+        </div>
+
+    </div> <!-- END MAIN CONTENT -->
 
     <footer class="bg-black text-white text-center rounded-xl p-3 mt-6">
         <p class="text-sm">&copy; 2026 Catálogo de Películas</p>

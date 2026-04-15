@@ -220,13 +220,13 @@ function agregarPelicula(mysqli $conexion, array $post, array $files): int {
 
 // ── REGISTRAR TIEMPO / RECOMENDACIONES ───────────────────────────────────────
 
-function registrarTiempo(mysqli $conexion, int $idPelicula, int $segundos, int $idPlanUsuario = 2): array {
+function registrarTiempo(mysqli $conexion, int $idPelicula, int $segundos, int $idUsuario, int $idPlanUsuario = 2): array {
     $gusto = $segundos >= 15 ? 1 : 0;
 
     $stmt = $conexion->prepare(
-        "INSERT INTO visualizaciones (id_pelicula, segundos, gusto) VALUES (?, ?, ?)"
+        "INSERT INTO visualizaciones (id_pelicula, id_usuario, segundos, gusto) VALUES (?, ?, ?, ?)"
     );
-    $stmt->bind_param("iii", $idPelicula, $segundos, $gusto);
+    $stmt->bind_param("iiii", $idPelicula, $idUsuario, $segundos, $gusto);
     $stmt->execute();
     $stmt->close();
 
