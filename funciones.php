@@ -171,6 +171,7 @@ function agregarPelicula(mysqli $conexion, array $post, array $files): int {
     $anio     = (int)($post['anio']          ?? 0);
     $youtube  = $post['youtube_url']         ?? '';
     $sinopsis = $post['sinopsis']            ?? '';
+    $duracion = (int)($post['duracion']      ?? 0);
     $generos  = $post['generos']             ?? [];
     $id_plan  = (int)($post['id_plan_peli']  ?? 1);
 
@@ -183,11 +184,11 @@ function agregarPelicula(mysqli $conexion, array $post, array $files): int {
     }
 
     $stmt = $conexion->prepare(
-        "INSERT INTO peliculas (nombre, autor, anio, youtube_url, sinopsis, imagen, imagen_tipo, id_plan)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO peliculas (nombre, autor, anio, youtube_url, sinopsis, duracion, imagen, imagen_tipo, id_plan)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     $null = null;
-    $stmt->bind_param("ssissssi", $nombre, $autor, $anio, $youtube, $sinopsis, $null, $imagenTipo, $id_plan);
+    $stmt->bind_param("ssississi", $nombre, $autor, $anio, $youtube, $sinopsis, $duracion, $null, $imagenTipo, $id_plan);
 
     if ($imagenBlob !== null) {
         $chunkSize = 65536;

@@ -26,6 +26,7 @@ require_once 'db.php';
 
 // ── VERIFICAR MÚLTIPLES USUARIOS EN CUENTA ───────────────────────────────────
 $idCuenta = (int)$_SESSION['id_cuenta'];
+$idUsuario = (int)$_SESSION['id_usuario'];
 $usuariosCuenta = [];
 $result = $conexion->query("SELECT id_usuario, nombre, email FROM usuarios WHERE id_cuenta = $idCuenta");
 while ($row = $result->fetch_assoc()) {
@@ -136,6 +137,23 @@ $topRes = $conexion->query(
 );
 while ($t = $topRes->fetch_assoc()) {
     $top10[] = $t;
+}
+
+// ── CONTINUAR VIENDO ──────────────────────────────────────────────────────────
+$continuarViendo = [];
+$contRes = $conexion->query(
+    "SELECT p.id_pelicula, p.nombre, p.duracion, p.youtube_url, SUM(v.segundos) as total_segundos
+     FROM peliculas p
+     JOIN visualizaciones v ON p.id_pelicula = v.id_pelicula
+     WHERE v.id_usuario = $idUsuario AND p.duracion > 0
+     GROUP BY p.id_pelicula, p.nombre, p.duracion, p.youtube_url
+     HAVING total_segundos < p.duracion
+     ORDER BY MAX(v.fecha) DESC
+     LIMIT 5"
+);
+while ($c = $contRes->fetch_assoc()) {
+    $progreso = min(100, round(($c['total_segundos'] / $c['duracion']) * 100));
+    $continuarViendo[] = array_merge($c, ['progreso' => $progreso]);
 }
 ?>
 <!DOCTYPE html>
@@ -369,9 +387,43 @@ while ($t = $topRes->fetch_assoc()) {
 
         </div> <!-- END LEFT -->
 
-        <!-- RIGHT: SIDEBAR TOP 10 -->
-        <div class="w-80 bg-gray-800 rounded-xl p-4">
-            <h3 class="text-white text-xl font-bold mb-4 text-center">🏆 Top 10 Películas</h3>
+        <!-- RIGHT: SIDEBAR -->
+        <div class="w-80 space-y-6">
+
+            <!-- CONTINUAR VIENDO -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="text-white text-xl font-bold mb-4 text-center">▶ Continuar Viendo</h3>
+                <?php if (!empty($continuarViendo)): ?>
+                <div class="space-y-3">
+                    <?php foreach ($continuarViendo as $peli): ?>
+                    <div class="bg-gray-700 rounded-lg p-2 cursor-pointer hover:bg-gray-600"
+                         onclick="abrirModalSinopsis(<?= $peli['id_pelicula'] ?>, '<?= htmlspecialchars($peli['nombre'], ENT_QUOTES) ?>', '', '<?= htmlspecialchars($peli['youtube_url'], ENT_QUOTES) ?>')">
+                        <div class="flex items-center gap-3">
+                            <img src="imagen.php?id=<?= $peli['id_pelicula'] ?>" alt="<?= htmlspecialchars($peli['nombre']) ?>"
+                                 class="w-16 h-10 object-cover rounded">
+                            <div class="flex-1">
+                                <p class="text-white text-sm font-semibold line-clamp-1">
+                                    <?= htmlspecialchars($peli['nombre']) ?>
+                                </p>
+                                <div class="w-full bg-gray-600 rounded-full h-1 mt-1">
+                                    <div class="bg-red-500 h-1 rounded-full" style="width: <?= $peli['progreso'] ?>%"></div>
+                                </div>
+                                <p class="text-gray-400 text-xs mt-1">
+                                    <?= $peli['progreso'] ?>% visto
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php else: ?>
+                <p class="text-gray-400 text-center">No hay películas para continuar.</p>
+                <?php endif; ?>
+            </div>
+
+            <!-- TOP 10 PELÍCULAS -->
+            <div class="bg-gray-800 rounded-xl p-4">
+                <h3 class="text-white text-xl font-bold mb-4 text-center">🏆 Top 10 Películas</h3>
             <?php if (!empty($top10)): ?>
             <ol class="space-y-3">
                 <?php foreach ($top10 as $index => $peli): ?>
@@ -395,7 +447,9 @@ while ($t = $topRes->fetch_assoc()) {
             <?php else: ?>
             <p class="text-gray-400 text-center">No hay películas en el top aún.</p>
             <?php endif; ?>
-        </div>
+            </div>
+
+        </div> <!-- END SIDEBAR -->
 
     </div> <!-- END MAIN CONTENT -->
 
@@ -418,6 +472,8 @@ while ($t = $topRes->fetch_assoc()) {
                 class="px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500">
             <textarea name="sinopsis" placeholder="Sinopsis de la película" rows="3"
                 class="px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500 resize-none"></textarea>
+            <input type="number" name="duracion" placeholder="Duración en segundos" min="1" required
+                class="px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-red-500">
 
             <!-- CHECKBOXES DE GÉNEROS -->
             <div class="bg-gray-800 border border-gray-600 rounded-lg p-3">

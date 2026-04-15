@@ -2,7 +2,6 @@
 let contadorInterval = null;
 let segundosVisto    = 0;
 let peliculaActualId = null;
-let yaRegistro       = false;
 
 // ── ENTRADA DESDE LOS BOTONES DEL GRID ───────────────────────────────────────
 
@@ -15,7 +14,6 @@ function verPeliculaBtn(btn) {
 function verPelicula(id, youtubeUrl) {
     peliculaActualId = id;
     segundosVisto    = 0;
-    yaRegistro       = false;
 
     // Convertir URL normal a embed
     const matchV  = youtubeUrl.match(/[?&]v=([^&]+)/);
@@ -38,12 +36,6 @@ function verPelicula(id, youtubeUrl) {
     contadorInterval = setInterval(() => {
         segundosVisto++;
         document.getElementById('contadorDisplay').textContent = segundosVisto + 's';
-
-        // Registrar automáticamente al llegar a 15 segundos
-        if (segundosVisto === 15 && !yaRegistro) {
-            yaRegistro = true;
-            enviarTiempo();
-        }
     }, 1000);
 }
 
@@ -54,8 +46,8 @@ function cerrarVideo() {
     document.getElementById('ytFrame').src = '';
     document.getElementById('modalVideo').classList.add('hidden');
 
-    // Registrar si aún no se hizo (menos de 15 s)
-    if (!yaRegistro && peliculaActualId) {
+    // Registrar siempre al cerrar
+    if (peliculaActualId) {
         enviarTiempo();
     }
 }
