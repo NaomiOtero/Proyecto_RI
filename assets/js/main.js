@@ -38,6 +38,13 @@ function verPelicula(id, youtubeUrl, inicio = 0) {
         segundosVisto++;
         document.getElementById('contadorDisplay').textContent = segundosVisto + 's';
     }, 1000);
+
+    // Registrar automáticamente después de 15 segundos
+    setTimeout(() => {
+        if (peliculaActualId) {
+            enviarTiempo();
+        }
+    }, 15000);
 }
 
 // ── CERRAR MODAL DE VIDEO ─────────────────────────────────────────────────────

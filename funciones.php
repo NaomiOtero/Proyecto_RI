@@ -267,3 +267,156 @@ function registrarTiempo(mysqli $conexion, int $idPelicula, int $segundos, int $
 
     return ['gusto' => $gusto, 'recomendaciones' => $recomendaciones];
 }
+
+function obtenerHistorialCuenta(mysqli $conexion, int $idCuenta): array {
+    $stmt = $conexion->prepare(
+        "SELECT u.nombre AS usuario, u.email, p.nombre AS pelicula, p.autor, v.segundos, v.gusto, COALESCE(v.fecha, '') AS fecha
+         FROM visualizaciones v
+         JOIN usuarios u   ON v.id_usuario = u.id_usuario
+         JOIN peliculas p ON v.id_pelicula = p.id_pelicula
+         WHERE u.id_cuenta = ?
+         ORDER BY v.fecha DESC"
+    );
+    $stmt->bind_param('i', $idCuenta);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $historial = [];
+    while ($fila = $result->fetch_assoc()) {
+        $historial[] = $fila;
+    }
+    $stmt->close();
+    return $historial;
+}
+
+function exportarHistorialXML(mysqli $conexion, int $idCuenta): void {
+    $filas = obtenerHistorialCuenta($conexion, $idCuenta);
+    $doc  = new DOMDocument('1.0', 'UTF-8');
+    $doc->formatOutput = true;
+
+    $root = $doc->createElement('historial');
+    $doc->appendChild($root);
+
+    foreach ($filas as $fila) {
+        $registro = $doc->createElement('registro');
+        foreach (['usuario', 'email', 'pelicula', 'autor', 'segundos', 'gusto', 'fecha'] as $campo) {
+            $elemento = $doc->createElement($campo, htmlspecialchars($fila[$campo], ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            $registro->appendChild($elemento);
+        }
+        $root->appendChild($registro);
+    }
+
+    header('Content-Type: application/xml; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="historial.xml"');
+    echo $doc->saveXML();
+    exit;
+}
+
+function exportarHistorialPDF(mysqli $conexion, int $idCuenta): void {
+    require_once 'libs/fpdf.php';
+
+    $filas = obtenerHistorialCuenta($conexion, $idCuenta);
+
+    class PDF extends FPDF {
+        function Row($data, $w) {
+            $nb = 0;
+            for($i=0;$i<count($data);$i++)
+                $nb = max($nb, $this->NbLines($w[$i], $data[$i]));
+            $h = 5*$nb;
+            if($this->GetY()+$h > $this->PageBreakTrigger)
+                $this->AddPage($this->CurOrientation);
+            for($i=0;$i<count($data);$i++) {
+                $x = $this->GetX();
+                $y = $this->GetY();
+                $this->Rect($x, $y, $w[$i], $h);
+                $this->MultiCell($w[$i],5,$data[$i],0,'L');
+                $this->SetXY($x+$w[$i], $y);
+            }
+            $this->Ln($h);
+        }
+
+        function NbLines($w, $txt) {
+            $cw = &$this->CurrentFont['cw'];
+            if($w==0)
+                $w = $this->w - $this->rMargin - $this->x;
+            $wmax = ($w-2*$this->cMargin)*1000/$this->FontSize;
+            $s = str_replace("\r",'',$txt);
+            $nb = strlen($s);
+            if($nb>0 && $s[$nb-1]=="\n")
+                $nb--;
+            $sep = -1;
+            $i = 0;
+            $j = 0;
+            $l = 0;
+            $nl = 1;
+            while($i<$nb) {
+                $c = $s[$i];
+                if($c=="\n") {
+                    $i++;
+                    $sep = -1;
+                    $j = $i;
+                    $l = 0;
+                    $nl++;
+                    continue;
+                }
+                if($c==' ')
+                    $sep = $i;
+                $l += isset($cw[$c]) ? $cw[$c] : 0;
+                if($l>$wmax) {
+                    if($sep==-1) {
+                        if($i==$j)
+                            $i++;
+                    } else
+                        $i = $sep+1;
+                    $sep = -1;
+                    $j = $i;
+                    $l = 0;
+                    $nl++;
+                } else
+                    $i++;
+            }
+            return $nl;
+        }
+    }
+
+    $pdf = new PDF();
+    $pdf->AddPage();
+    $pdf->SetFont('Arial','B',16);
+    $titulo = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Historial de visualizaciones') ?: 'Historial de visualizaciones';
+    $pdf->Cell(0,10,$titulo,0,1,'C');
+    $pdf->SetFont('Arial','',10);
+    $fecha = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Fecha de generación: ' . date('d/m/Y')) ?: 'Fecha de generación: ' . date('d/m/Y');
+    $pdf->Cell(0,10,$fecha,0,1,'R');
+    $pdf->Ln(5);
+
+    $w = array(40, 80, 25, 15, 35);
+    $header = array_map(function($s) { return @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $s) ?: $s; }, array('Usuario', 'Película', 'Segundos', 'Gusto', 'Fecha'));
+    $pdf->Row($header, $w);
+
+    if (empty($filas)) {
+        $empty = array_map(function($s) { return @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $s) ?: $s; }, array('', 'No hay registros en el historial.', '', '', ''));
+        $pdf->Row($empty, $w);
+    } else {
+        foreach($filas as $row) {
+            $data = array_map(function($s) { return @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $s) ?: $s; }, array(
+                $row['usuario'],
+                $row['pelicula'],
+                (string)$row['segundos'],
+                $row['gusto'] ? 'Sí' : 'No',
+                $row['fecha']
+            ));
+            $pdf->Row($data, $w);
+        }
+    }
+
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="historial.pdf"');
+    header('Content-Transfer-Encoding: binary');
+    header('Cache-Control: private, max-age=0, must-revalidate');
+    header('Pragma: public');
+    header('Expires: 0');
+    echo $pdf->Output('S');
+    exit;
+}
+
+

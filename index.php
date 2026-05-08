@@ -3,7 +3,7 @@
  * index.php — Controlador principal y vista del catálogo de películas.
  */
 error_reporting(E_ERROR | E_PARSE);
-ini_set('display_errors', '0');
+ini_set('display_errors', '2');
 session_start();
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────────────────
@@ -26,6 +26,15 @@ require_once 'db.php';
 
 // ── VERIFICAR MÚLTIPLES USUARIOS EN CUENTA ───────────────────────────────────
 $idCuenta = (int)$_SESSION['id_cuenta'];
+
+$export = trim($_GET['export'] ?? '');
+if ($export === 'xml') {
+    exportarHistorialXML($conexion, $idCuenta);
+}
+if ($export === 'pdf') {
+    exportarHistorialPDF($conexion, $idCuenta);
+}
+
 $idUsuario = (int)$_SESSION['id_usuario'];
 $usuariosCuenta = [];
 $result = $conexion->query("SELECT id_usuario, nombre, email FROM usuarios WHERE id_cuenta = $idCuenta");
@@ -171,6 +180,23 @@ while ($c = $contRes->fetch_assoc()) {
 
     <!-- HEADER -->
     <header class="bg-red-700 rounded-xl p-4 mb-6 relative flex items-center justify-center">
+        <div class="absolute left-4 top-4">
+            <div class="relative">
+                <button type="button"
+                    onclick="document.getElementById('exportMenu').classList.toggle('hidden')"
+                    class="text-xs bg-black bg-opacity-40 hover:bg-opacity-70 text-white px-3 py-2 rounded-lg">
+                    Exportar historial
+                </button>
+                <div id="exportMenu" class="hidden absolute left-0 mt-2 w-44 bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden z-20">
+                    <a href="<?= htmlspecialchars($_SERVER['SCRIPT_NAME']) ?>?export=xml"
+                       target="_blank" rel="noopener noreferrer"
+                       class="block px-3 py-2 text-sm text-white hover:bg-red-700">Descargar XML</a>
+                    <a href="<?= htmlspecialchars($_SERVER['SCRIPT_NAME']) ?>?export=pdf"
+                       target="_blank" rel="noopener noreferrer"
+                       class="block px-3 py-2 text-sm text-white hover:bg-red-700">Descargar PDF</a>
+                </div>
+            </div>
+        </div>
         <div class="text-center">
             <h1 class="text-white text-3xl font-bold">📽️ Catálogo de Películas</h1>
             <h3 class="text-white text-sm">Las mejores películas</h3>
